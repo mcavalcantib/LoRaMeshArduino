@@ -52,9 +52,9 @@ MeshStatus_Typedef LocalRemoteRead(uint16_t idIn, uint16_t* idOut,
     uint16_t id = 0;
 
     /* Asserts parameters */
-    if (net == NULL) return MESH_ERROR;
-    if (uniqueId == NULL) return MESH_ERROR;
-    if (hSerialCommand == NULL) return MESH_ERROR;
+    if (net == NULL) return MESH_INVALID_VALUE;
+    if (uniqueId == NULL) return MESH_INVALID_VALUE;
+    if (hSerialCommand == NULL) return MESH_INVALID_VALUE;
 
     /* Loads dummy bytes */
     for (i = 0; i < 3; i++) bufferPayload[i] = 0x00;
@@ -215,11 +215,11 @@ MeshStatus_Typedef ReceivePacketCommand(uint16_t* id, uint8_t* command,
     uint16_t crc = 0;
 
     /* Assert parameters */
-    if (id == NULL) return MESH_ERROR;
-    if (command == NULL) return MESH_ERROR;
-    if (payload == NULL) return MESH_ERROR;
-    if (payloadSize == NULL) return MESH_ERROR;
-    if (hSerialCommand == NULL) return MESH_ERROR;
+    if (id == NULL) return MESH_INVALID_VALUE;
+    if (command == NULL) return MESH_INVALID_VALUE;
+    if (payload == NULL) return MESH_INVALID_VALUE;
+    if (payloadSize == NULL) return MESH_INVALID_VALUE;
+    if (hSerialCommand == NULL) return MESH_INVALID_VALUE;
 
     if (!hSerialCommand->isListening()) hSerialCommand->listen();
 
@@ -236,13 +236,12 @@ MeshStatus_Typedef ReceivePacketCommand(uint16_t* id, uint8_t* command,
         timeout--;
         delay(1);
     }
-
     /* In case it didn't get any data */
-    if ((timeout == 0) && (i == 0)) return MESH_ERROR;
+    if ((timeout == 0) && (i == 0)) return MESH_TIMEOUT;
 
     /* Checks CRC16 */
     crc = (uint16_t)frame.buffer[i - 2] | ((uint16_t)frame.buffer[i - 1] << 8);
-    if (ComputeCRC(&frame.buffer[0], i - 2) != crc) return MESH_ERROR;
+    if (ComputeCRC(&frame.buffer[0], i - 2) != crc) return MESH_INVALID_VALUE;
 
     /* Copies ID */
     *id = (uint16_t)frame.buffer[0] | ((uint16_t)frame.buffer[1] << 8);

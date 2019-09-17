@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <LoRaMesh.h>
-// Variáveis a serem preenchidas com o recebido da mensagem
+
 uint16_t id;
 uint8_t payload[31], payloadSize;
 
@@ -27,16 +27,97 @@ uint16_t AdcIn[2];
 
 /* SoftwareSerial handles */
 SoftwareSerial* hSerialCommands = NULL;
-SoftwareSerial* hSerialTransparent = NULL;
+
+/* Received command */
+uint8_t command;
+
+MeshStatus_Typedef LocalWriteConfig(uint16_t id, uint16_t net,
+                                    uint32_t uniqueId) {
+    uint8_t crc = 0;
+    uint8_t bufferPayload[31];
+    uint8_t payloadSize;
+    uint8_t i = 0;
+    uint8_t command;
+    uint16_t idRead = 0;
+
+    /* Asserts parameters */
+    if (uniqueId == 0) {
+        Serial.println("ERRO UniqueID");
+        return MESH_ERROR;
+    }
+
+    if (hSerialCommands == NULL) {
+        Serial.println("ERRO hSerialCommands");
+        return MESH_ERROR;
+    }
+
+    /*Creating the payload with
+    the passed NET and UniqueID and then,
+    call the function with the ID passed*/
+
+    bufferPayload[0] = net & 0xFF;
+    bufferPayload[1] = (net >> 8) & 0xFF;
+    bufferPayload[2] = uniqueId & 0xFF;
+    bufferPayload[3] = (uniqueId >> 8) & 0xFF;
+    bufferPayload[4] = (uniqueId >> 16) & 0xFF;
+    bufferPayload[5] = (uniqueId >> 24) & 0xFF;
+
+    /* Loads dummy bytes */
+    for (i = 6; i < 11; i++) bufferPayload[i] = 0x00;
+
+    PrepareFrameCommand(id, CMD_WRITECONFIG, &bufferPayload[0], i);
+
+    /* Sends packet */
+    SendPacket();
+
+    /* Flush serial input buffer */
+    // SerialFlush(hSerialCommand);
+    // To not make modifications on the original library
+    // I copied the content of the SerialFlush function
+    while (hSerialCommands->available() > 0) {
+        hSerialCommands->read();
+    }
+
+    /* Waits for response */
+    if (ReceivePacketCommand(&idRead, &command, &bufferPayload[0], &payloadSize,
+                             5000) != MESH_OK) {
+        Serial.println("Erro de pacote recebido");
+        return MESH_ERROR;
+    }
+
+    /* Checks command */
+    if (command != CMD_WRITECONFIG) {
+        Serial.print("Erro! Commando recebido: ");
+        Serial.println(command, HEX);
+        return MESH_ERROR;
+    }else{
+        Serial.print("ID: ");
+        Serial.print("NET: ");
+        Serial.println((uint32_t)bufferPayload[0] | ((uint32_t)(bufferPayload[1]) << 8));
+        Serial.print("UID: ");
+        Serial.println((uint32_t)bufferPayload[2] | ((uint32_t)(bufferPayload[3]) << 8) | ((uint32_t)(bufferPayload[4]) << 16) | ((uint32_t)(bufferPayload[5]) << 24));
+        Serial.print("Versão de HW: ");
+        Serial.println((uint32_t)bufferPayload[6]);
+        Serial.print("RSD: ");
+        Serial.println((uint32_t)bufferPayload[7]);
+        Serial.print("Rev de FW: ");
+        Serial.println((uint32_t)bufferPayload[8]);
+        Serial.print("RSD: ");
+        Serial.println((uint32_t)bufferPayload[9] | ((uint32_t)(bufferPayload[10]) << 8) | ((uint32_t)(bufferPayload[11]) << 16));
+    }
+
+    return MESH_OK;
+}
+
+
 
 void setup() {
     // initialize digital pin LED_BUILTIN as an output.
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN,
-                 HIGH);  // turn the LED on (HIGH is the voltage level)
+    pinMode(2, OUTPUT);
+    digitalWrite(2, HIGH);  // turn the LED on (HIGH is the voltage level)
     // Configurando o módulo LoRaMesh
     delay(1000);
-    Serial.begin(9600); /* Initialize monitor serial */
+    Serial.begin(9600);  /* Initialize monitor serial */
 
     /* Initialize SoftwareSerial */
     // Pinos:
@@ -46,36 +127,77 @@ void setup() {
 
     // 4-> Lora TX
     // 5-> Lora RX
-    hSerialTransparent = SerialTranspInit(4, 5, 9600);
+    // hSerialTransparent = SerialTranspInit(4, 5, 9600);
 
-    /* Gets the local device ID*/
-    if(LocalRead(&localId, &localNet, &localUniqueId) != MESH_OK)
-      Serial.print("Couldn't read local ID\n\n");
-    else
-    {
-      Serial.print("Local ID: ");
-      Serial.println(localId);
-      Serial.print("Local NET: ");
-      Serial.println(localNet);
-      Serial.print("Local Unique ID: ");
-      Serial.println(localUniqueId, HEX);
-      Serial.print("\n");
+    /* Gets the local device ID */
+    if (LocalRead(&localId, &localNet, &localUniqueId) != MESH_OK)
+        Serial.print("Couldn't read local ID\n\n");
+    else {
+        Serial.print("Local ID: ");
+        Serial.println(localId);
+        Serial.print("Local NET: ");
+        Serial.println(localNet);
+        Serial.print("Local Unique ID: ");
+        Serial.println(localUniqueId, HEX);
+        Serial.print("\n");
     }
 
+    // ID = 0 means that is a master node
+    /*if (localNet == 0) {
+        Serial.println("Sending master configurations...");
+        LocalWriteConfig(0x00, 0x25, localUniqueId);
+    } else {
+        Serial.println("The node is a master!");
+    }
+
+    if (LocalRead(&localId, &localNet, &localUniqueId) != MESH_OK)
+        Serial.print("Couldn't read local ID\n\n");
+    else {
+        Serial.print("Local ID: ");
+        Serial.println(localId);
+        Serial.print("Local NET: ");
+        Serial.println(localNet);
+        Serial.print("Local Unique ID: ");
+        Serial.println(localUniqueId, HEX);
+        Serial.print("\n");
+    }*/
     delay(500);
 }
 
+MeshStatus_Typedef SendDatatest() {
+    uint8_t i = 0, command, payloadSize;
+    uint16_t idRead = 0;
+    uint8_t bufferPayload[31];
+
+    /*Creating the payload with
+    the passed NET and UniqueID and then,
+    call the function with the ID passed*/
+
+    bufferPayload[0] = 0x01;
+    bufferPayload[1] = 0x02;
+    bufferPayload[2] = 0x03;
+
+    if (PrepareFrameCommand(0x14, 0x00, &bufferPayload[0], 3) != MESH_OK) {
+        Serial.println("Erro de mensagem enviada");
+        return MESH_ERROR;
+    }
+
+    /* Sends packet */
+    SendPacket();
+
+    return MESH_OK;
+}
+
 void loop() {
-    if (ReceivePacketTransp(&id, &payload[0], &payloadSize, 10000) == MESH_OK) {
+    /*if (ReceivePacketCommand(&id, &command, &bufferPayload[0], &payloadSize, 10000) == MESH_OK) {
         digitalWrite(LED_BUILTIN, HIGH);
         Serial.println("RECEBIDO:");
         Serial.print("tamanho: ");
         Serial.println(payloadSize);
-        for (int i = 0; i < payloadSize; i++) Serial.println(payload[i], HEX);
-    } else {
-        Serial.println("ERRO AO RECEBER PACOTE");
-    }
-    delay(1000);
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(1000);
+        for (int i = 0; i < payloadSize; i++) Serial.println(bufferPayload[i], HEX);
+    } else {*/
+    delay(5000);
+    SendDatatest();
+    Serial.println("Pacote enviado");
+    //}
 }
